@@ -16,7 +16,7 @@ async fn join(
 
     match base {
         Ok(v) => {
-            let computationResult = join_computation(v, room_id)
+            let computationResult = join_computation::<String>(v, room_id)
                 .await
                 .context("keygen finished");
             Ok(())
