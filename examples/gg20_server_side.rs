@@ -7,6 +7,7 @@ use round_based::async_runtime::AsyncProtocol;
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
+use rocket::serde::json::Json;
 
 mod gg20_sm_client;
 use gg20_sm_client::join_computation;
@@ -19,7 +20,6 @@ async fn join(
     number_of_parties: u16
 ) -> Result<()> {
     let base = surf::Url::parse(address)?;
-
     let (_i, incoming, outgoing) = join_computation::<ProtocolMessage>(base, room_id)
         .await
         .context("keygen finished")?;
@@ -29,6 +29,8 @@ async fn join(
     tokio::pin!(outgoing);
 
     let keygen = Keygen::new(party_index, threshold, number_of_parties)?;
+
+    // This out put contains the keys for this party and needs to be saved
     let output = AsyncProtocol::new(keygen, incoming, outgoing)
         .run()
         .await
@@ -36,13 +38,22 @@ async fn join(
     Ok(())
 }
 
-#[rocket::post("/keygen/<room_id>")]
-async fn start_keygen(room_id: &str) {
-    println!("starting keygen in room :{room_id}");
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+struct KeygenConfig {
+    party_index: u16,
+    threshold: u16,
+    number_of_parties: u16
+}
 
-    join("http://localhost:8000/", room_id, 2, 2, 2);
-
-    println!("keygen started in room :{room_id}");
+#[rocket::post("/keygen/<room_id>", format = "json", data = "<keygen_config>")]
+async fn start_keygen(room_id: &str, keygen_config: Json<KeygenConfig>) {
+    join(
+        "http://localhost:8000/",
+        room_id,
+        keygen_config.party_index,
+        keygen_config.threshold,
+        keygen_config.number_of_parties
+    ).await;
 }
 
 /// Represents a header Last-Event-ID
