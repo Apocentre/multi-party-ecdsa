@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures::StreamExt;
 
-use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::keygen::Keygen;
+use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::keygen::{ProtocolMessage, Keygen};
 use round_based::async_runtime::AsyncProtocol;
 
 use rocket::http::Status;
@@ -20,7 +20,7 @@ async fn join(
 ) -> Result<()> {
     let base = surf::Url::parse(address)?;
 
-    let (_i, incoming, outgoing) = join_computation::<String>(base, room_id)
+    let (_i, incoming, outgoing) = join_computation::<ProtocolMessage>(base, room_id)
         .await
         .context("keygen finished")?;
 
