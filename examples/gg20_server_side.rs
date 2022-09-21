@@ -1,6 +1,9 @@
-use anyhow::{Result, Context};
+use anyhow::{anyhow, Context, Result};
+use futures::StreamExt;
 
-use rocket::data::ToByteUnit;
+use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::keygen::Keygen;
+use round_based::async_runtime::AsyncProtocol;
+
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
@@ -11,25 +14,33 @@ use gg20_sm_client::join_computation;
 async fn join(
     address: &str,
     room_id: &str,
+    party_index: u16,
+    threshold: u16,
+    number_of_parties: u16
 ) -> Result<()> {
-    let base = surf::Url::parse(address);
+    let base = surf::Url::parse(address)?;
 
-    match base {
-        Ok(v) => {
-            let computationResult = join_computation::<String>(v, room_id)
-                .await
-                .context("keygen finished");
-            Ok(())
-        },
-        Err(e) => Ok(()),
-    }
+    let (_i, incoming, outgoing) = join_computation::<String>(base, room_id)
+        .await
+        .context("keygen finished")?;
+
+    let incoming = incoming.fuse();
+    tokio::pin!(incoming);
+    tokio::pin!(outgoing);
+
+    let keygen = Keygen::new(party_index, threshold, number_of_parties)?;
+    let output = AsyncProtocol::new(keygen, incoming, outgoing)
+        .run()
+        .await
+        .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
+    Ok(())
 }
 
 #[rocket::post("/keygen/<room_id>")]
 async fn start_keygen(room_id: &str) {
     println!("starting keygen in room :{room_id}");
 
-    join("http://localhost:8000/", room_id);
+    join("http://localhost:8000/", room_id, 2, 2, 2);
 
     println!("keygen started in room :{room_id}");
 }
@@ -63,10 +74,8 @@ struct IssuedUniqueIdx {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let figment = rocket::Config::figment().merge((
-        "limits",
-        rocket::data::Limits::new().limit("string", 100.megabytes()),
-    ));
+    let figment = rocket::Config::figment().merge(("port", 8001));
+
     rocket::custom(figment)
         .mount("/", rocket::routes![start_keygen])
         .launch()
