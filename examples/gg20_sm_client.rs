@@ -31,6 +31,7 @@ where
 
     // Obtain party index
     let index = client.issue_index().await.context("issue an index")?;
+    println!("index: ;{index}");
 
     // Ignore incoming messages addressed to someone else
     let incoming = incoming.try_filter(move |msg| {
